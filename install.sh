@@ -610,7 +610,7 @@ sed -i "s/206.206.77.179/\$IP/g" "\$TARGET"
 
 # 5. 执行 Python 脚本
 echo "Running vast speedtest with IP: \$IP"
-/usr/bin/python3 "\$TARGET"
+/usr/bin/python3 "\$TARGET" --speedtest
 EOF
 
 chmod +x "$WRAPPER_SCRIPT"
