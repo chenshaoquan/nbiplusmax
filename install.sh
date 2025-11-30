@@ -579,7 +579,7 @@ PYTHON_EOF
 echo "源码释放完成。"
 
 # 定义其他路径
-TARGET_SCRIPT="/root/send_mach_info.py"
+TARGET_SCRIPT="/var/lib/vastai_kaalia/send_mach_info.py"
 WRAPPER_SCRIPT="/usr/local/bin/vast_speedtest_runner.sh"
 SERVICE_NAME="vast_speedtest"
 
