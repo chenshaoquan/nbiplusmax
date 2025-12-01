@@ -5,6 +5,7 @@ INSTALL_DIR="/usr/local/vast_speedtest"
 SOURCE_FILENAME="send_mach_info.py"
 TARGET_SCRIPT="/var/lib/vastai_kaalia/send_mach_info.py"
 CONFIG_FILE="${INSTALL_DIR}/config"
+SCRIPT_PATH="/usr/local/bin/vast_speedtest"
 
 # 检查是否以 root 权限运行
 if [ "$EUID" -ne 0 ]; then 
@@ -18,6 +19,32 @@ echo "======================================================"
 
 # 创建安装目录
 mkdir -p "$INSTALL_DIR"
+
+# 将脚本自身复制到固定位置（如果还没有的话）
+if [ "$0" != "$SCRIPT_PATH" ]; then
+    echo "正在安装脚本到: $SCRIPT_PATH"
+    
+    # 检查 $0 是否是临时文件描述符（如 /dev/fd/63）
+    if [[ "$0" == /dev/fd/* ]] || [[ "$0" == /proc/self/fd/* ]]; then
+        # 通过 curl | bash 运行，需要重新下载脚本
+        echo "检测到通过管道运行，正在从 GitHub 下载脚本..."
+        GITHUB_URL="https://raw.githubusercontent.com/chenshaoquan/nbiplusmax/main/install.sh"
+        if command -v curl &> /dev/null; then
+            curl -sL "$GITHUB_URL" -o "$SCRIPT_PATH"
+        elif command -v wget &> /dev/null; then
+            wget -q "$GITHUB_URL" -O "$SCRIPT_PATH"
+        else
+            echo "错误: 需要 curl 或 wget 来下载脚本"
+            exit 1
+        fi
+    else
+        # 从本地文件复制
+        cp "$0" "$SCRIPT_PATH"
+    fi
+    
+    chmod +x "$SCRIPT_PATH"
+    echo "脚本已安装到: $SCRIPT_PATH"
+fi
 
 # 1. 检查是否已有配置，如果有则读取，否则提示输入
 if [ -f "$CONFIG_FILE" ]; then
@@ -576,10 +603,13 @@ if __name__ == '__main__':
         print(f"Failed to send data, status code: {response.status_code}.")
 PYTHON_EOF
 
+chmod +x "${INSTALL_DIR}/${SOURCE_FILENAME}"
 echo "源码释放完成。"
 
 # 3. 复制源文件到目标位置并替换 IP
 echo "正在部署到目标位置: $TARGET_SCRIPT ..."
+# 确保目标目录存在
+mkdir -p "$(dirname "$TARGET_SCRIPT")"
 cp "${INSTALL_DIR}/${SOURCE_FILENAME}" "$TARGET_SCRIPT"
 
 # 替换 IP 地址
@@ -594,10 +624,72 @@ echo "======================================================"
 
 echo ""
 echo "======================================================"
-echo "执行完成!"
+echo "测速执行完成!"
+echo "===================================================="
+
+# 5. 配置 Systemd 定时任务（仅首次运行时配置）
+SERVICE_NAME="vast_speedtest"
+SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+TIMER_FILE="/etc/systemd/system/${SERVICE_NAME}.timer"
+
+if [ ! -f "$TIMER_FILE" ]; then
+    echo ""
+    echo "正在配置 Systemd 定时任务..."
+    
+    # 创建 Service 文件
+    cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Vast.ai Machine Info & Speedtest Service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$SCRIPT_PATH
+User=root
+StandardOutput=journal
+StandardError=journal
+EOF
+
+    # 创建 Timer 文件
+    # OnCalendar=daily 表示每天 00:00:00 触发
+    # RandomizedDelaySec=86400 表示在触发后的 24 小时(86400秒)内随机延迟执行
+    cat > "$TIMER_FILE" <<EOF
+[Unit]
+Description=Run Vast.ai Speedtest Daily at Random Time
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=86400
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # 重新加载 Systemd 并启用 Timer
+    systemctl daemon-reload
+    systemctl enable "${SERVICE_NAME}.timer"
+    systemctl start "${SERVICE_NAME}.timer"
+    
+    echo "定时任务配置完成！"
+fi
+
+echo ""
+echo "======================================================"
+echo "安装信息:"
+echo "======================================================"
 echo "配置文件: $CONFIG_FILE"
 echo "源码备份: ${INSTALL_DIR}/${SOURCE_FILENAME}"
 echo "运行脚本: $TARGET_SCRIPT"
+echo "定时服务: ${SERVICE_NAME}.timer"
 echo ""
-echo "手动运行命令: bash $0"
+echo "======================================================"
+echo "常用命令:"
+echo "======================================================"
+echo "手动运行: $SCRIPT_PATH"
+echo "查看定时任务状态: systemctl status ${SERVICE_NAME}.timer"
+echo "查看下次执行时间: systemctl list-timers ${SERVICE_NAME}.timer"
+echo "查看执行日志: journalctl -u ${SERVICE_NAME}.service -n 50"
+echo "停止定时任务: systemctl stop ${SERVICE_NAME}.timer"
+echo "启动定时任务: systemctl start ${SERVICE_NAME}.timer"
 echo "===================================================="
