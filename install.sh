@@ -653,16 +653,47 @@ cp "${INSTALL_DIR}/${SOURCE_FILENAME}" "$TARGET_SCRIPT"
 echo "正在注入测速服务器 IP: $SERVER_IP ..."
 sed -i "s/206.206.77.179/$SERVER_IP/g" "$TARGET_SCRIPT"
 
-# 4. 执行测速
+# 4. 首次测速（10分钟内随机延迟）
+if [ "$AUTO_MODE" = false ]; then
+    # 生成 0-600 秒（10分钟）的随机延迟
+    DELAY=$((RANDOM % 600))
+    echo ""
+    echo "======================================================"
+    echo "首次测速将在 $DELAY 秒后执行（10分钟内随机）"
+    echo "======================================================"
+    
+    # 创建后台任务脚本
+    DELAYED_SCRIPT="/tmp/vast_speedtest_delayed_$$.sh"
+    cat > "$DELAYED_SCRIPT" <<DELAYED_EOF
+#!/bin/bash
+sleep $DELAY
 echo "======================================================"
-echo "正在执行测速..."
+echo "开始执行首次测速..."
 echo "======================================================"
 /usr/bin/python3 "$TARGET_SCRIPT" --speedtest
-
 echo ""
-echo "======================================================"
-echo "测速执行完成!"
-echo "===================================================="
+echo "首次测速完成！"
+rm -f "$DELAYED_SCRIPT"
+DELAYED_EOF
+    
+    chmod +x "$DELAYED_SCRIPT"
+    nohup "$DELAYED_SCRIPT" > /tmp/vast_speedtest_delayed.log 2>&1 &
+    
+    echo "后台任务已启动，日志: /tmp/vast_speedtest_delayed.log"
+    echo "可以使用 'tail -f /tmp/vast_speedtest_delayed.log' 查看进度"
+else
+    # 自动模式（手动测速或定时任务）立即执行
+    echo ""
+    echo "======================================================"
+    echo "正在执行测速..."
+    echo "======================================================"
+    /usr/bin/python3 "$TARGET_SCRIPT" --speedtest
+    
+    echo ""
+    echo "======================================================"
+    echo "测速执行完成!"
+    echo "===================================================="
+fi
 
 # 5. 配置 Systemd 定时任务（仅首次运行时配置）
 SERVICE_NAME="vast_speedtest"
@@ -741,6 +772,11 @@ echo "======================================================"
 echo "完整安装/重新配置: $SCRIPT_PATH"
 echo "快速执行测速: $SPEEDTEST_CMD (或简写: vast_speedtest_run)"
 echo ""
+if [ "$AUTO_MODE" = false ]; then
+    echo "首次测速进度:"
+    echo "  查看延迟测速日志: tail -f /tmp/vast_speedtest_delayed.log"
+    echo ""
+fi
 echo "【重要】手动测速和定时任务使用相同的执行方式："
 echo "  - 手动测速: $SPEEDTEST_CMD"
 echo "  - 等同于: $SCRIPT_PATH --auto"
