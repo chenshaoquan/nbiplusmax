@@ -7,6 +7,12 @@ TARGET_SCRIPT="/var/lib/vastai_kaalia/send_mach_info.py"
 CONFIG_FILE="${INSTALL_DIR}/config"
 SCRIPT_PATH="/usr/local/bin/vast_speedtest"
 
+# 检查是否以自动模式运行（用于 Systemd 定时任务）
+AUTO_MODE=false
+if [ "$1" == "--auto" ]; then
+    AUTO_MODE=true
+fi
+
 # 检查是否以 root 权限运行
 if [ "$EUID" -ne 0 ]; then 
   echo "请使用 root 权限运行此脚本 (Please run as root)"
@@ -46,12 +52,43 @@ if [ "$0" != "$SCRIPT_PATH" ]; then
     echo "脚本已安装到: $SCRIPT_PATH"
 fi
 
-# 1. 检查是否已有配置，如果有则读取，否则提示输入
+# 1. 检查是否已有配置
 if [ -f "$CONFIG_FILE" ]; then
-    SERVER_IP=$(cat "$CONFIG_FILE")
-    echo "检测到已配置的测速服务器 IP: $SERVER_IP"
-    echo "如需修改，请删除配置文件: $CONFIG_FILE"
+    OLD_IP=$(cat "$CONFIG_FILE")
+    echo "检测到已配置的测速服务器 IP: $OLD_IP"
+    
+    # 自动模式直接使用已保存的 IP
+    if [ "$AUTO_MODE" = true ]; then
+        SERVER_IP="$OLD_IP"
+        echo "自动模式：使用已配置的 IP: $SERVER_IP"
+    else
+        # 交互模式询问是否使用
+        read -p "是否使用此 IP？(y/n): " USE_OLD_IP
+        
+        if [[ "$USE_OLD_IP" =~ ^[Yy]$ ]]; then
+            SERVER_IP="$OLD_IP"
+            echo "使用已配置的 IP: $SERVER_IP"
+        else
+            echo "请输入新的测速服务器 IP"
+            while true; do
+                read -p "请输入测速服务器 IP 地址 (例如: 1.2.3.4): " SERVER_IP
+                if [[ $SERVER_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "$SERVER_IP" > "$CONFIG_FILE"
+                    echo "新 IP 已保存: $SERVER_IP"
+                    break
+                else
+                    echo "无效的 IP 格式，请重新输入。"
+                fi
+            done
+        fi
+    fi
 else
+    # 没有配置文件
+    if [ "$AUTO_MODE" = true ]; then
+        echo "错误: 自动模式需要先配置 IP，请先手动运行一次脚本"
+        exit 1
+    fi
+    
     echo "首次运行，需要配置测速服务器 IP"
     while true; do
         read -p "请输入测速服务器 IP 地址 (例如: 1.2.3.4): " SERVER_IP
@@ -644,7 +681,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=$SCRIPT_PATH
+ExecStart=$SCRIPT_PATH --auto
 User=root
 StandardOutput=journal
 StandardError=journal
@@ -674,6 +711,21 @@ EOF
     echo "定时任务配置完成！"
 fi
 
+# 6. 创建快速测速命令（直接调用主脚本的自动模式）
+SPEEDTEST_CMD="/usr/local/bin/vast_speedtest_run"
+echo "正在创建快速测速命令..."
+
+cat > "$SPEEDTEST_CMD" <<EOF
+#!/bin/bash
+# 快速测速命令 - 调用主脚本的自动模式
+# 这样确保手动测速和 Systemd 定时任务使用完全相同的执行方式
+
+exec $SCRIPT_PATH --auto
+EOF
+
+chmod +x "$SPEEDTEST_CMD"
+echo "快速测速命令已创建: $SPEEDTEST_CMD"
+
 echo ""
 echo "======================================================"
 echo "安装信息:"
@@ -686,10 +738,19 @@ echo ""
 echo "======================================================"
 echo "常用命令:"
 echo "======================================================"
-echo "手动运行: $SCRIPT_PATH"
-echo "查看定时任务状态: systemctl status ${SERVICE_NAME}.timer"
-echo "查看下次执行时间: systemctl list-timers ${SERVICE_NAME}.timer"
-echo "查看执行日志: journalctl -u ${SERVICE_NAME}.service -n 50"
-echo "停止定时任务: systemctl stop ${SERVICE_NAME}.timer"
-echo "启动定时任务: systemctl start ${SERVICE_NAME}.timer"
+echo "完整安装/重新配置: $SCRIPT_PATH"
+echo "快速执行测速: $SPEEDTEST_CMD (或简写: vast_speedtest_run)"
+echo ""
+echo "【重要】手动测速和定时任务使用相同的执行方式："
+echo "  - 手动测速: $SPEEDTEST_CMD"
+echo "  - 等同于: $SCRIPT_PATH --auto"
+echo "  - Systemd 也调用: $SCRIPT_PATH --auto"
+echo ""
+echo "定时任务管理:"
+echo "  查看状态: systemctl status ${SERVICE_NAME}.timer"
+echo "  查看下次执行时间: systemctl list-timers ${SERVICE_NAME}.timer"
+echo "  查看执行日志: journalctl -u ${SERVICE_NAME}.service -n 50"
+echo "  手动触发一次: systemctl start ${SERVICE_NAME}.service"
+echo "  停止定时任务: systemctl stop ${SERVICE_NAME}.timer"
+echo "  启动定时任务: systemctl start ${SERVICE_NAME}.timer"
 echo "===================================================="
