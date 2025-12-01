@@ -1,19 +1,8 @@
 #!/bin/bash
 
-# =================配置区域=================
-# 请修改为你的 GitHub 用户名和仓库名
-# 例如: GITHUB_REPO="chenshaoquan/axisaispeed"
-GITHUB_USER="chenshaoquan"
-GITHUB_REPO="axisaispeed"
-GITHUB_BRANCH="main"
-# =========================================
-
-# 构造下载链接
-BASE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}"
-SOURCE_FILENAME="send_mach_info.py"
-
 # 安装与源码存储目录
 INSTALL_DIR="/usr/local/vast_speedtest"
+SOURCE_FILENAME="send_mach_info.py"
 
 # 检查是否以 root 权限运行
 if [ "$EUID" -ne 0 ]; then 
