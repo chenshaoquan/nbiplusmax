@@ -719,15 +719,18 @@ StandardError=journal
 EOF
 
     # 创建 Timer 文件
-    # OnCalendar=daily 表示每天 00:00:00 触发
-    # RandomizedDelaySec=86400 表示在触发后的 24 小时(86400秒)内随机延迟执行
+    # 每天3次执行：00:00、08:00、16:00
+    # RandomizedDelaySec=14400 表示在触发后的 4 小时(14400秒)内随机延迟执行
+    # 这样确保每次执行间隔至少4小时（0-4点、8-12点、16-20点）
     cat > "$TIMER_FILE" <<EOF
 [Unit]
-Description=Run Vast.ai Speedtest Daily at Random Time
+Description=Run Vast.ai Speedtest 3 Times Daily at Random Time
 
 [Timer]
-OnCalendar=daily
-RandomizedDelaySec=86400
+OnCalendar=00:00:00
+OnCalendar=08:00:00
+OnCalendar=16:00:00
+RandomizedDelaySec=14400
 Persistent=true
 
 [Install]
